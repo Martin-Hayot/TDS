@@ -11,11 +11,10 @@ from sklearn.model_selection import train_test_split
 mp_holistic = mp.solutions.holistic
 mp_drawing = mp.solutions.drawing_utils
 
-have_data = True
-
+have_data = False
 DATA_PATH = os.path.join("MP_Data")
 
-actions = np.array(['Martin', 'Gaetan', "Serge"])
+actions = np.array(['Martin', 'Gaetan', "Serge", "Unauthorized"])
 no_sequences = 30
 sequence_length = 30
 
@@ -45,23 +44,33 @@ def make_folders(actions, DATA_PATH):
 
 
 def draw_styled_landmarks(image, results):
+    # Draw pose connections
+    mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS,
+                              mp_drawing.DrawingSpec(color=(245, 117, 66), thickness=2, circle_radius=4),
+                              mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2)
+                              )
     # Draw left hand connections
     mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
-                              mp_drawing.DrawingSpec(color=(121, 22, 76), thickness=2, circle_radius=4),
-                              mp_drawing.DrawingSpec(color=(121, 44, 250), thickness=2, circle_radius=2)
+                              mp_drawing.DrawingSpec(
+                                  color=(121, 22, 76), thickness=2, circle_radius=4),
+                              mp_drawing.DrawingSpec(
+                                  color=(121, 44, 250), thickness=2, circle_radius=2)
                               )
     # Draw right hand connections
     mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
-                              mp_drawing.DrawingSpec(color=(245, 117, 66), thickness=2, circle_radius=4),
+                              mp_drawing.DrawingSpec(
+                                  color=(245, 117, 66), thickness=2, circle_radius=4),
                               mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2))
 
 
 def extract_keypoints(results):
+    pose = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark]).flatten() if \
+        results.pose_landmarks else np.zeros(33 * 4)
     lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten() if \
         results.left_hand_landmarks else np.zeros(21 * 3)
     rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten() if \
         results.right_hand_landmarks else np.zeros(21 * 3)
-    return np.concatenate([lh, rh])
+    return np.concatenate([pose, lh, rh])
 
 
 if not have_data:
@@ -96,7 +105,8 @@ if not have_data:
                         cv2.imshow('OpenCV Feed', image)
 
                     keypoints = extract_keypoints(results)
-                    npy_path = os.path.join(DATA_PATH, action, str(sequence), str(frame_num))
+                    npy_path = os.path.join(
+                        DATA_PATH, action, str(sequence), str(frame_num))
                     np.save(npy_path, keypoints)
 
                     # Render detections
@@ -112,7 +122,8 @@ for action in actions:
     for sequence in range(no_sequences):
         window = []
         for frame_num in range(sequence_length):
-            res = np.load(os.path.join(DATA_PATH, action, str(sequence), "{}.npy".format(frame_num)))
+            res = np.load(os.path.join(DATA_PATH, action, str(
+                sequence), "{}.npy".format(frame_num)))
             window.append(res)
         sequences.append(window)
         labels.append(label_map[action])
@@ -126,17 +137,18 @@ log_dir = os.path.join('logs')
 tb_callback = TensorBoard(log_dir=log_dir)
 
 model = Sequential()
-model.add(LSTM(64, return_sequences=True, activation='relu', input_shape=(30, 126)))
+model.add(LSTM(64, return_sequences=True,
+          activation='relu', input_shape=(30, 258)))
 model.add(LSTM(128, return_sequences=True, activation='relu'))
 model.add(LSTM(64, return_sequences=False, activation='relu'))
 model.add(Dense(64, activation='relu'))
 model.add(Dense(32, activation='relu'))
 model.add(Dense(actions.shape[0], activation='softmax'))
 
-model.compile(optimizer='Adam', loss='categorical_crossentropy', metrics=['categorical_accuracy'])
+model.compile(optimizer='Adam', loss='categorical_crossentropy',
+              metrics=['categorical_accuracy'])
 model.fit(X_train, y_train, epochs=1000, callbacks=[tb_callback])
 
 model.save('action.h5')
 
 # realtime test
-
